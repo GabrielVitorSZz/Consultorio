@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consultas - Consultório</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-placeholder"></div>
+<div id="toast-container"></div>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <div>
+      <h1>📅 Consultas</h1>
+      <p>Agendamento e gerenciamento de consultas</p>
+    </div>
+    <button class="btn btn-primary" onclick="abrirAgendar()">+ Agendar Consulta</button>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="search-box">
+        🔍 <input type="text" id="busca" placeholder="Buscar por paciente ou médico..." oninput="filtrar()">
+      </div>
+      <select id="filtro-status" onchange="filtrar()" style="width:auto">
+        <option value="">Todos os status</option>
+        <option value="AGENDADA">Agendada</option>
+        <option value="REALIZADA">Realizada</option>
+        <option value="CANCELADA">Cancelada</option>
+        <option value="FALTA">Falta</option>
+      </select>
+    </div>
+    <div class="table-wrapper" style="margin-top:.75rem">
+      <div id="tabela-container"><div class="loading"><div class="spinner"></div>Carregando...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Agendamento -->
+<div class="modal-overlay" id="modal-consulta">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-titulo">Agendar Consulta</h2>
+      <button class="modal-close" onclick="fecharModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-alert"></div>
+      <div class="form-group">
+        <label>Paciente <span class="required">*</span></label>
+        <select id="f-paciente"><option value="">Carregando...</option></select>
+      </div>
+      <div class="form-group">
+        <label>Médico <span class="required">*</span></label>
+        <select id="f-medico"><option value="">Carregando...</option></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data e Hora <span class="required">*</span></label>
+          <input type="datetime-local" id="f-datahora">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Motivo da consulta</label>
+        <input type="text" id="f-motivo" maxlength="300">
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="f-obs" rows="3" maxlength="500"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-salvar" onclick="salvar()">💾 Agendar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Status -->
+<div class="modal-overlay" id="modal-status">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header">
+      <h2>Atualizar Status</h2>
+      <button class="modal-close" onclick="closeModal('modal-status')">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:.9rem;color:var(--gray-600)">Selecione o novo status da consulta:</p>
+      <div style="display:flex;flex-direction:column;gap:.5rem" id="status-buttons"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+if (!Auth.requireAuth()) void 0;
+let consultas=[], editandoId=null;
+
+fetch('/pages/navbar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('navbar-placeholder').innerHTML=html;
+  renderNavUser();
+  document.getElementById('nav-consultas').classList.add('active');
+});
+
+async function carregar() {
+  try {
+    consultas = await Api.get('/consultas');
+    renderTabela(consultas);
+  } catch(e) { showToast('Erro: '+e.message,'error'); }
+}
+
+function renderTabela(lista) {
+  if (!lista.length) {
+    document.getElementById('tabela-container').innerHTML='<div class="empty-state"><div class="empty-icon">📭</div>Nenhuma consulta encontrada.</div>';
+    return;
+  }
+  document.getElementById('tabela-container').innerHTML=`
+    <table>
+      <thead><tr>
+        <th>Paciente</th><th>Médico</th><th>Especialidade</th><th>Data/Hora</th><th>Motivo</th><th>Status</th><th>Ações</th>
+      </tr></thead>
+      <tbody>
+        ${lista.map(c=>`<tr>
+          <td><strong>${escapeHtml(c.pacienteNome)}</strong></td>
+          <td>${escapeHtml(c.medicoNome)}</td>
+          <td><span style="color:var(--gray-600);font-size:.8rem">${escapeHtml(c.medicoEspecialidade||'')}</span></td>
+          <td>${c.dataHora}</td>
+          <td>${escapeHtml(c.motivo||'-')}</td>
+          <td>${badgeStatus(c.status)}</td>
+          <td><div class="actions-cell">
+            <button class="btn btn-outline btn-sm" onclick="abrirStatus(${c.id})">🔄 Status</button>
+            ${c.status==='AGENDADA'?`<button class="btn btn-sm" style="background:#f0f9ff;color:var(--primary);border:1px solid var(--primary)" onclick="abrirEditar(${c.id})">✏️</button>`:''}
+            ${Auth.isMedico() && c.status==='AGENDADA'?`<a href="/pages/fichas.html?consultaId=${c.id}" class="btn btn-success btn-sm">📋 Ficha</a>`:''}
+          </div></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function filtrar() {
+  const q = document.getElementById('busca').value.toLowerCase();
+  const status = document.getElementById('filtro-status').value;
+  renderTabela(consultas.filter(c =>
+    (!q || c.pacienteNome.toLowerCase().includes(q) || c.medicoNome.toLowerCase().includes(q)) &&
+    (!status || c.status===status)
+  ));
+}
+
+async function abrirAgendar() {
+  editandoId=null;
+  document.getElementById('modal-titulo').textContent='Agendar Consulta';
+  document.getElementById('btn-salvar').textContent='💾 Agendar';
+  document.getElementById('modal-alert').innerHTML='';
+  ['paciente','medico','motivo','obs'].forEach(k=>{ const el=document.getElementById('f-'+k); if(el) el.value=''; });
+  document.getElementById('f-datahora').value='';
+  await carregarSelects();
+  openModal('modal-consulta');
+}
+
+async function abrirEditar(id) {
+  editandoId=id;
+  const c=consultas.find(x=>x.id===id);
+  if (!c) return;
+  document.getElementById('modal-titulo').textContent='Reagendar Consulta';
+  document.getElementById('btn-salvar').textContent='💾 Salvar';
+  document.getElementById('modal-alert').innerHTML='';
+  await carregarSelects();
+  document.getElementById('f-paciente').value=c.pacienteId;
+  document.getElementById('f-medico').value=c.medicoId;
+  document.getElementById('f-motivo').value=c.motivo||'';
+  document.getElementById('f-obs').value=c.observacoes||'';
+  openModal('modal-consulta');
+}
+
+async function carregarSelects() {
+  const [pacientes, medicos] = await Promise.all([Api.get('/pacientes'), Api.get('/medicos')]);
+  document.getElementById('f-paciente').innerHTML=
+    '<option value="">-- Selecione --</option>'+
+    pacientes.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)} - ${escapeHtml(p.cpf)}</option>`).join('');
+  document.getElementById('f-medico').innerHTML=
+    '<option value="">-- Selecione --</option>'+
+    medicos.map(m=>`<option value="${m.id}">Dr(a). ${escapeHtml(m.nome)} - ${escapeHtml(m.especialidade)}</option>`).join('');
+}
+
+async function salvar() {
+  const btn=document.getElementById('btn-salvar');
+  btn.disabled=true; btn.textContent='Salvando...';
+  const alertEl=document.getElementById('modal-alert');
+  alertEl.innerHTML='';
+  const body={
+    pacienteId: Number(document.getElementById('f-paciente').value),
+    medicoId: Number(document.getElementById('f-medico').value),
+    dataHora: document.getElementById('f-datahora').value,
+    motivo: document.getElementById('f-motivo').value.trim(),
+    observacoes: document.getElementById('f-obs').value.trim()
+  };
+  try {
+    if (editandoId) await Api.put('/consultas/'+editandoId, body);
+    else await Api.post('/consultas', body);
+    fecharModal();
+    showToast('Consulta salva com sucesso!','success');
+    await carregar();
+  } catch(e) {
+    alertEl.innerHTML=`<div class="alert alert-error">❌ ${escapeHtml(e.message)}</div>`;
+  } finally { btn.disabled=false; btn.textContent=editandoId?'💾 Salvar':'💾 Agendar'; }
+}
+
+let statusEditandoId=null;
+function abrirStatus(id) {
+  statusEditandoId=id;
+  const statusList=['AGENDADA','REALIZADA','CANCELADA','FALTA'];
+  const colors={'AGENDADA':'var(--info)','REALIZADA':'var(--success)','CANCELADA':'var(--danger)','FALTA':'var(--warning)'};
+  document.getElementById('status-buttons').innerHTML=statusList.map(s=>
+    `<button class="btn" style="background:${colors[s]};color:#fff;justify-content:center" onclick="mudarStatus('${s}')">${badgeStatus(s)} ${s}</button>`
+  ).join('');
+  openModal('modal-status');
+}
+
+async function mudarStatus(novoStatus) {
+  try {
+    await Api.put('/consultas/'+statusEditandoId+'/status?status='+novoStatus);
+    closeModal('modal-status');
+    showToast('Status atualizado!','success');
+    await carregar();
+  } catch(e) { showToast('Erro: '+e.message,'error'); }
+}
+
+function fecharModal() { closeModal('modal-consulta'); }
+carregar();
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auditoria - Consultório</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-placeholder"></div>
+<div id="toast-container"></div>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <div>
+      <h1>🔍 Log de Auditoria</h1>
+      <p>Rastreabilidade de todas as ações do sistema</p>
+    </div>
+    <button class="btn btn-outline" onclick="carregar()">🔄 Atualizar</button>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="search-box">
+        🔍 <input type="text" id="busca" placeholder="Filtrar por ação ou usuário..." oninput="filtrar()">
+      </div>
+      <select id="limite" onchange="carregar()" style="width:auto">
+        <option value="50">Últimos 50</option>
+        <option value="100" selected>Últimos 100</option>
+        <option value="200">Últimos 200</option>
+        <option value="500">Últimos 500</option>
+      </select>
+    </div>
+    <div class="table-wrapper" style="margin-top:.75rem">
+      <div id="tabela-container"><div class="loading"><div class="spinner"></div>Carregando...</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+if (!Auth.requireAuth()) void 0;
+if (!Auth.isAdmin()) { window.location.href='/pages/dashboard.html'; }
+
+let logs=[];
+
+fetch('/pages/navbar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('navbar-placeholder').innerHTML=html;
+  renderNavUser();
+  document.getElementById('nav-auditoria').classList.add('active');
+});
+
+async function carregar() {
+  const limite=document.getElementById('limite').value;
+  document.getElementById('tabela-container').innerHTML='<div class="loading"><div class="spinner"></div>Carregando...</div>';
+  try {
+    logs=await Api.get('/auditoria?limite='+limite);
+    renderTabela(logs);
+  } catch(e) { showToast('Erro: '+e.message,'error'); }
+}
+
+function renderTabela(lista) {
+  if (!lista.length) {
+    document.getElementById('tabela-container').innerHTML='<div class="empty-state"><div class="empty-icon">📋</div>Nenhum registro encontrado.</div>';
+    return;
+  }
+  document.getElementById('tabela-container').innerHTML=`
+    <table>
+      <thead><tr>
+        <th>#</th><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Detalhes</th>
+      </tr></thead>
+      <tbody>
+        ${lista.map(l=>`<tr>
+          <td style="color:var(--gray-500);font-size:.8rem">${l.id}</td>
+          <td style="white-space:nowrap;font-size:.8rem;color:var(--gray-600)">${l.dataHora}</td>
+          <td>
+            <span style="background:var(--primary-light);color:var(--primary);padding:.15rem .5rem;border-radius:20px;font-size:.75rem;font-weight:600">
+              ${escapeHtml(l.usuarioEmail)}
+            </span>
+          </td>
+          <td>${escapeHtml(l.acao)}</td>
+          <td style="color:var(--gray-600);font-size:.8rem">${escapeHtml(l.detalhes||'-')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function filtrar() {
+  const q=document.getElementById('busca').value.toLowerCase();
+  renderTabela(logs.filter(l=>
+    l.acao.toLowerCase().includes(q) ||
+    (l.usuarioEmail||'').toLowerCase().includes(q) ||
+    (l.detalhes||'').toLowerCase().includes(q)
+  ));
+}
+
+carregar();
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usuários - Consultório</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-placeholder"></div>
+<div id="toast-container"></div>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <div>
+      <h1>👤 Usuários</h1>
+      <p>Gerenciamento de usuários do sistema</p>
+    </div>
+    <button class="btn btn-primary" onclick="abrirNovo()">+ Novo Usuário</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <div id="tabela-container"><div class="loading"><div class="spinner"></div>Carregando...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Usuário -->
+<div class="modal-overlay" id="modal-usuario">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-titulo">Novo Usuário</h2>
+      <button class="modal-close" onclick="fecharModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-alert"></div>
+      <div class="form-group">
+        <label>Nome completo <span class="required">*</span></label>
+        <input type="text" id="f-nome" maxlength="150">
+      </div>
+      <div class="form-group">
+        <label>E-mail <span class="required">*</span></label>
+        <input type="email" id="f-email" maxlength="150">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Senha <span id="senha-req" class="required">*</span></label>
+          <input type="password" id="f-senha" maxlength="100" autocomplete="new-password">
+          <small id="senha-hint" style="color:var(--gray-500);font-size:.75rem">Deixe em branco para manter a senha atual</small>
+        </div>
+        <div class="form-group">
+          <label>Perfil <span class="required">*</span></label>
+          <select id="f-perfil"><option value="">Carregando...</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+          <input type="checkbox" id="f-ativo" style="width:auto"> Usuário ativo
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-salvar" onclick="salvar()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+if (!Auth.requireAuth()) void 0;
+if (!Auth.isAdmin()) { window.location.href='/pages/dashboard.html'; }
+
+let usuarios=[], perfis=[], editandoId=null;
+
+fetch('/pages/navbar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('navbar-placeholder').innerHTML=html;
+  renderNavUser();
+  document.getElementById('nav-usuarios').classList.add('active');
+});
+
+async function carregar() {
+  try {
+    [usuarios, perfis] = await Promise.all([Api.get('/usuarios'), Api.get('/usuarios/perfis')]);
+    renderTabela();
+  } catch(e) { showToast('Erro: '+e.message,'error'); }
+}
+
+function renderTabela() {
+  if (!usuarios.length) {
+    document.getElementById('tabela-container').innerHTML='<div class="empty-state"><div class="empty-icon">👤</div>Nenhum usuário encontrado.</div>';
+    return;
+  }
+  document.getElementById('tabela-container').innerHTML=`
+    <table>
+      <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody>
+        ${usuarios.map(u=>`<tr>
+          <td><strong>${escapeHtml(u.nome)}</strong></td>
+          <td>${escapeHtml(u.email)}</td>
+          <td><span class="badge badge-info">${escapeHtml(u.perfilNome)}</span></td>
+          <td>${u.ativo?'<span class="badge badge-success">Ativo</span>':'<span class="badge badge-danger">Inativo</span>'}</td>
+          <td><div class="actions-cell">
+            <button class="btn btn-sm" style="background:#f0f9ff;color:var(--primary);border:1px solid var(--primary)" onclick="abrirEditar(${u.id})">✏️ Editar</button>
+            ${u.ativo?`<button class="btn btn-danger btn-sm" onclick="inativar(${u.id},'${escapeHtml(u.nome)}')">🚫 Inativar</button>`:''}
+          </div></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function abrirNovo() {
+  editandoId=null;
+  document.getElementById('modal-titulo').textContent='Novo Usuário';
+  document.getElementById('senha-hint').style.display='none';
+  document.getElementById('senha-req').style.display='inline';
+  ['nome','email','senha'].forEach(k=>document.getElementById('f-'+k).value='');
+  document.getElementById('f-ativo').checked=true;
+  document.getElementById('modal-alert').innerHTML='';
+  carregarPerfis();
+  openModal('modal-usuario');
+}
+
+function abrirEditar(id) {
+  editandoId=id;
+  const u=usuarios.find(x=>x.id===id);
+  if (!u) return;
+  document.getElementById('modal-titulo').textContent='Editar Usuário';
+  document.getElementById('senha-hint').style.display='block';
+  document.getElementById('senha-req').style.display='none';
+  document.getElementById('f-nome').value=u.nome||'';
+  document.getElementById('f-email').value=u.email||'';
+  document.getElementById('f-senha').value='';
+  document.getElementById('f-ativo').checked=u.ativo;
+  document.getElementById('modal-alert').innerHTML='';
+  carregarPerfis(u.perfilId);
+  openModal('modal-usuario');
+}
+
+function carregarPerfis(selectedId) {
+  document.getElementById('f-perfil').innerHTML=
+    '<option value="">-- Selecione --</option>'+
+    perfis.map(p=>`<option value="${p.id}" ${p.id===selectedId?'selected':''}>${escapeHtml(p.nome)} - ${escapeHtml(p.descricao||'')}</option>`).join('');
+}
+
+async function salvar() {
+  const btn=document.getElementById('btn-salvar');
+  btn.disabled=true; btn.textContent='Salvando...';
+  const alertEl=document.getElementById('modal-alert');
+  alertEl.innerHTML='';
+  const body={
+    nome: document.getElementById('f-nome').value.trim(),
+    email: document.getElementById('f-email').value.trim(),
+    senha: document.getElementById('f-senha').value,
+    perfilId: Number(document.getElementById('f-perfil').value),
+    ativo: document.getElementById('f-ativo').checked
+  };
+  try {
+    if (editandoId) await Api.put('/usuarios/'+editandoId, body);
+    else await Api.post('/usuarios', body);
+    fecharModal();
+    showToast('Usuário salvo!','success');
+    await carregar();
+  } catch(e) {
+    alertEl.innerHTML=`<div class="alert alert-error">❌ ${escapeHtml(e.message)}</div>`;
+  } finally { btn.disabled=false; btn.textContent='💾 Salvar'; }
+}
+
+async function inativar(id, nome) {
+  if (!confirmacao(`Deseja inativar o usuário "${nome}"?`)) return;
+  try {
+    await Api.delete('/usuarios/'+id);
+    showToast('Usuário inativado.','success');
+    await carregar();
+  } catch(e) { showToast('Erro: '+e.message,'error'); }
+}
+
+function fecharModal() { closeModal('modal-usuario'); }
+carregar();
+</script>
+</body>
+</html>

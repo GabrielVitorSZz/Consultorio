@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pacientes - Consultório</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-placeholder"></div>
+<div id="toast-container"></div>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <div>
+      <h1>👥 Pacientes</h1>
+      <p>Cadastro e gerenciamento de pacientes</p>
+    </div>
+    <button class="btn btn-primary" id="btn-novo" onclick="abrirFormNovo()">+ Novo Paciente</button>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div class="search-box">
+        🔍 <input type="text" id="busca" placeholder="Buscar por nome..." oninput="filtrar()">
+      </div>
+    </div>
+    <div class="table-wrapper" style="margin-top:.75rem">
+      <div id="tabela-container"><div class="loading"><div class="spinner"></div>Carregando...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Paciente -->
+<div class="modal-overlay" id="modal-paciente">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-titulo">Novo Paciente</h2>
+      <button class="modal-close" onclick="fecharModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-alert"></div>
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Nome completo <span class="required">*</span></label>
+          <input type="text" id="f-nome" maxlength="150">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>CPF <span class="required">*</span></label>
+          <input type="text" id="f-cpf" placeholder="000.000.000-00" maxlength="14">
+        </div>
+        <div class="form-group">
+          <label>Data de Nascimento</label>
+          <input type="date" id="f-nascimento">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Telefone</label>
+          <input type="text" id="f-telefone" maxlength="20">
+        </div>
+        <div class="form-group">
+          <label>Sexo</label>
+          <select id="f-sexo">
+            <option value="">-- Selecione --</option>
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>E-mail</label>
+        <input type="email" id="f-email" maxlength="150">
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="f-obs" rows="3" maxlength="500"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-salvar" onclick="salvar()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Detalhe -->
+<div class="modal-overlay" id="modal-detalhe">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 id="detalhe-nome">Detalhes do Paciente</h2>
+      <button class="modal-close" onclick="closeModal('modal-detalhe')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('tab-dados')">📋 Dados</button>
+        <button class="tab-btn" onclick="switchTab('tab-historico')">📅 Histórico de Consultas</button>
+        <button class="tab-btn" onclick="switchTab('tab-fichas')">📄 Fichas Médicas</button>
+      </div>
+      <div class="tab-panel active" id="tab-dados">
+        <div class="detail-grid" id="detalhe-grid"></div>
+      </div>
+      <div class="tab-panel" id="tab-historico">
+        <div id="historico-consultas"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+      <div class="tab-panel" id="tab-fichas">
+        <div id="historico-fichas"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-detalhe')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+if (!Auth.requireAuth()) void 0;
+let pacientes = [], editandoId = null;
+
+fetch('/pages/navbar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('navbar-placeholder').innerHTML = html;
+  renderNavUser();
+  document.getElementById('nav-pacientes').classList.add('active');
+});
+
+async function carregar() {
+  try {
+    pacientes = await Api.get('/pacientes');
+    renderTabela(pacientes);
+  } catch(e) { showToast('Erro ao carregar pacientes: '+e.message,'error'); }
+}
+
+function renderTabela(lista) {
+  if (!lista.length) {
+    document.getElementById('tabela-container').innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div>Nenhum paciente encontrado.</div>';
+    return;
+  }
+  const podeEditar = Auth.isAdmin() || Auth.isRecepcionista();
+  document.getElementById('tabela-container').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Nascimento</th><th>Ações</th>
+      </tr></thead>
+      <tbody>
+        ${lista.map(p=>`<tr>
+          <td><strong>${escapeHtml(p.nome)}</strong></td>
+          <td>${escapeHtml(p.cpf)}</td>
+          <td>${escapeHtml(p.telefone||'-')}</td>
+          <td>${escapeHtml(p.email||'-')}</td>
+          <td>${p.dataNascimento ? fmtDate(p.dataNascimento) : '-'}</td>
+          <td><div class="actions-cell">
+            <button class="btn btn-outline btn-sm" onclick="verDetalhe(${p.id})">👁 Ver</button>
+            ${podeEditar?`<button class="btn btn-sm" style="background:#f0f9ff;color:var(--primary);border:1px solid var(--primary)" onclick="abrirEditar(${p.id})">✏️</button>`:''}
+            ${Auth.isAdmin()?`<button class="btn btn-danger btn-sm" onclick="inativar(${p.id},'${escapeHtml(p.nome)}')">🗑</button>`:''}
+          </div></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function filtrar() {
+  const q = document.getElementById('busca').value.toLowerCase();
+  renderTabela(pacientes.filter(p => p.nome.toLowerCase().includes(q) || p.cpf.includes(q)));
+}
+
+function abrirFormNovo() {
+  editandoId = null;
+  document.getElementById('modal-titulo').textContent = 'Novo Paciente';
+  ['nome','cpf','nascimento','telefone','sexo','email','obs'].forEach(k=>{
+    const el = document.getElementById('f-'+k);
+    if (el) el.value='';
+  });
+  document.getElementById('modal-alert').innerHTML = '';
+  openModal('modal-paciente');
+}
+
+function abrirEditar(id) {
+  const p = pacientes.find(x=>x.id===id);
+  if (!p) return;
+  editandoId = id;
+  document.getElementById('modal-titulo').textContent = 'Editar Paciente';
+  document.getElementById('f-nome').value = p.nome||'';
+  document.getElementById('f-cpf').value = p.cpf||'';
+  document.getElementById('f-nascimento').value = p.dataNascimento||'';
+  document.getElementById('f-telefone').value = p.telefone||'';
+  document.getElementById('f-sexo').value = p.sexo||'';
+  document.getElementById('f-email').value = p.email||'';
+  document.getElementById('f-obs').value = p.observacoes||'';
+  document.getElementById('modal-alert').innerHTML = '';
+  openModal('modal-paciente');
+}
+
+async function salvar() {
+  const btn = document.getElementById('btn-salvar');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  const alertEl = document.getElementById('modal-alert');
+  alertEl.innerHTML = '';
+  const body = {
+    nome: document.getElementById('f-nome').value.trim(),
+    cpf: document.getElementById('f-cpf').value.trim(),
+    dataNascimento: document.getElementById('f-nascimento').value||null,
+    telefone: document.getElementById('f-telefone').value.trim(),
+    sexo: document.getElementById('f-sexo').value,
+    email: document.getElementById('f-email').value.trim(),
+    observacoes: document.getElementById('f-obs').value.trim()
+  };
+  try {
+    if (editandoId) await Api.put('/pacientes/'+editandoId, body);
+    else await Api.post('/pacientes', body);
+    fecharModal();
+    showToast('Paciente salvo com sucesso!','success');
+    await carregar();
+  } catch(e) {
+    alertEl.innerHTML = `<div class="alert alert-error">❌ ${escapeHtml(e.message)}</div>`;
+  } finally { btn.disabled=false; btn.textContent='💾 Salvar'; }
+}
+
+async function inativar(id, nome) {
+  if (!confirmacao(`Deseja inativar o paciente "${nome}"?`)) return;
+  try {
+    await Api.delete('/pacientes/'+id);
+    showToast('Paciente inativado.','success');
+    await carregar();
+  } catch(e) { showToast('Erro: '+e.message,'error'); }
+}
+
+function fecharModal() { closeModal('modal-paciente'); }
+
+let detalheAtualId = null;
+async function verDetalhe(id) {
+  detalheAtualId = id;
+  const p = pacientes.find(x=>x.id===id);
+  if (!p) return;
+  document.getElementById('detalhe-nome').textContent = p.nome;
+  document.getElementById('detalhe-grid').innerHTML = `
+    <div class="detail-item"><label>Nome</label><p>${escapeHtml(p.nome)}</p></div>
+    <div class="detail-item"><label>CPF</label><p>${escapeHtml(p.cpf)}</p></div>
+    <div class="detail-item"><label>Telefone</label><p>${escapeHtml(p.telefone||'-')}</p></div>
+    <div class="detail-item"><label>E-mail</label><p>${escapeHtml(p.email||'-')}</p></div>
+    <div class="detail-item"><label>Nascimento</label><p>${p.dataNascimento ? fmtDate(p.dataNascimento) : '-'}</p></div>
+    <div class="detail-item"><label>Sexo</label><p>${p.sexo==='M'?'Masculino':p.sexo==='F'?'Feminino':'-'}</p></div>
+    <div class="detail-item full"><label>Observações</label><p>${escapeHtml(p.observacoes||'Nenhuma')}</p></div>
+  `;
+  // Reset tabs
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  document.querySelectorAll('.tab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
+  openModal('modal-detalhe');
+  carregarHistorico(id);
+  carregarFichas(id);
+}
+
+async function carregarHistorico(pacienteId) {
+  document.getElementById('historico-consultas').innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const consultas = await Api.get('/consultas?pacienteId='+pacienteId);
+    if (!consultas.length) {
+      document.getElementById('historico-consultas').innerHTML='<div class="empty-state"><div class="empty-icon">📭</div>Nenhuma consulta registrada.</div>';
+      return;
+    }
+    document.getElementById('historico-consultas').innerHTML=`<table>
+      <thead><tr><th>Data/Hora</th><th>Médico</th><th>Motivo</th><th>Status</th></tr></thead>
+      <tbody>${consultas.map(c=>`<tr>
+        <td>${c.dataHora}</td>
+        <td>${escapeHtml(c.medicoNome)}</td>
+        <td>${escapeHtml(c.motivo||'-')}</td>
+        <td>${badgeStatus(c.status)}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch(e) { document.getElementById('historico-consultas').innerHTML='<p style="color:red;padding:1rem">Erro ao carregar histórico</p>'; }
+}
+
+async function carregarFichas(pacienteId) {
+  document.getElementById('historico-fichas').innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const fichas = await Api.get('/fichas/paciente/'+pacienteId);
+    if (!fichas.length) {
+      document.getElementById('historico-fichas').innerHTML='<div class="empty-state"><div class="empty-icon">📄</div>Nenhuma ficha médica registrada.</div>';
+      return;
+    }
+    document.getElementById('historico-fichas').innerHTML=fichas.map(f=>`
+      <div class="card" style="margin-bottom:.75rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+          <strong>📅 ${f.dataConsulta}</strong>
+          <span style="color:var(--gray-600);font-size:.8rem">Dr(a). ${escapeHtml(f.medicoNome)}</span>
+        </div>
+        ${f.diagnostico?`<p><strong>Diagnóstico:</strong> ${escapeHtml(f.diagnostico)}</p>`:''}
+        ${f.prescricao?`<p style="margin-top:.4rem"><strong>Prescrição:</strong> ${escapeHtml(f.prescricao)}</p>`:''}
+        ${f.examesSolicitados?`<p style="margin-top:.4rem"><strong>Exames:</strong> ${escapeHtml(f.examesSolicitados)}</p>`:''}
+      </div>`).join('');
+  } catch(e) { document.getElementById('historico-fichas').innerHTML='<p style="color:red;padding:1rem">Erro ao carregar fichas</p>'; }
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// Ocultar botão novo para médicos
+if (!Auth.isAdmin() && !Auth.isRecepcionista()) {
+  document.getElementById('btn-novo').style.display='none';
+}
+
+carregar();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Compiled files
+target/
+*.class
+
+# Eclipse / IntelliJ / VS Code
+.idea/
+.classpath
+.project
+.settings/
+.vscode/
+
+# Maven logs
+*.log
+
+# Quarkus
+.mvn/
+ quarkus-app/
+*.native
+*.jar

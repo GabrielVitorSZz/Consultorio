@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fichas Médicas - Consultório</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-placeholder"></div>
+<div id="toast-container"></div>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <div>
+      <h1>📋 Fichas de Atendimento</h1>
+      <p>Registro e histórico médico dos pacientes</p>
+    </div>
+  </div>
+
+  <!-- Caso venha da página de consultas com ?consultaId=X -->
+  <div id="form-nova-ficha" style="display:none">
+    <div class="card">
+      <div class="card-title">➕ Registrar Atendimento</div>
+      <div id="info-consulta" style="background:var(--primary-light);padding:.75rem;border-radius:var(--radius-sm);margin-bottom:1rem;font-size:.875rem"></div>
+      <div id="form-alert"></div>
+      <div class="form-group">
+        <label>Diagnóstico</label>
+        <textarea id="nf-diagnostico" rows="3" maxlength="500"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Prescrição</label>
+        <textarea id="nf-prescricao" rows="4" maxlength="1000"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Exames Solicitados</label>
+        <textarea id="nf-exames" rows="2" maxlength="500"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Observações do Médico</label>
+        <textarea id="nf-obs" rows="3" maxlength="1000"></textarea>
+      </div>
+      <div style="display:flex;gap:.75rem;margin-top:1rem">
+        <button class="btn btn-primary" onclick="salvarFicha()">💾 Registrar Atendimento</button>
+        <button class="btn btn-outline" onclick="cancelarFicha()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Listagem de consultas prontas para ficha (médico logado) -->
+  <div class="card" id="painel-consultas-pendentes">
+    <div class="card-title">📅 Minhas Consultas Agendadas</div>
+    <div id="consultas-medico"><div class="loading"><div class="spinner"></div>Carregando...</div></div>
+  </div>
+
+  <!-- Busca histórico por paciente -->
+  <div class="card">
+    <div class="card-title">🔍 Histórico por Paciente</div>
+    <div class="toolbar">
+      <select id="sel-paciente" style="flex:1">
+        <option value="">-- Selecione um paciente --</option>
+      </select>
+      <button class="btn btn-outline" onclick="buscarHistorico()">Buscar</button>
+    </div>
+    <div id="historico-resultado" style="margin-top:1rem"></div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+if (!Auth.requireAuth()) void 0;
+
+fetch('/pages/navbar.html').then(r=>r.text()).then(html=>{
+  document.getElementById('navbar-placeholder').innerHTML=html;
+  renderNavUser();
+  document.getElementById('nav-fichas').classList.add('active');
+});
+
+// Verifica se veio de consulta específica
+const params = new URLSearchParams(window.location.search);
+const consultaIdParam = params.get('consultaId');
+let consultaAtualId = null;
+
+async function init() {
+  // Carrega pacientes para o select
+  try {
+    const pacientes = await Api.get('/pacientes');
+    document.getElementById('sel-paciente').innerHTML =
+      '<option value="">-- Selecione --</option>' +
+      pacientes.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('');
+  } catch(e) {}
+
+  if (consultaIdParam) {
+    await abrirFormParaConsulta(Number(consultaIdParam));
+  }
+
+  if (Auth.isMedico()) {
+    await carregarMinhasConsultas();
+  } else {
+    document.getElementById('painel-consultas-pendentes').style.display='none';
+  }
+}
+
+async function abrirFormParaConsulta(consultaId) {
+  consultaAtualId = consultaId;
+  try {
+    const c = await Api.get('/consultas/'+consultaId);
+    document.getElementById('info-consulta').innerHTML =
+      `<strong>Paciente:</strong> ${escapeHtml(c.pacienteNome)} &nbsp;|&nbsp;
+       <strong>Data:</strong> ${c.dataHora} &nbsp;|&nbsp;
+       <strong>Motivo:</strong> ${escapeHtml(c.motivo||'-')}`;
+    document.getElementById('form-nova-ficha').style.display='block';
+    document.getElementById('form-nova-ficha').scrollIntoView({behavior:'smooth'});
+  } catch(e) { showToast('Erro ao carregar consulta: '+e.message,'error'); }
+}
+
+async function carregarMinhasConsultas() {
+  try {
+    const user = Auth.getUser();
+    const consultas = await Api.get('/consultas');
+    const agendadas = consultas.filter(c=>c.status==='AGENDADA');
+    if (!agendadas.length) {
+      document.getElementById('consultas-medico').innerHTML='<div class="empty-state"><div class="empty-icon">📭</div>Nenhuma consulta agendada.</div>';
+      return;
+    }
+    document.getElementById('consultas-medico').innerHTML=`
+      <table>
+        <thead><tr><th>Paciente</th><th>Data/Hora</th><th>Motivo</th><th>Ação</th></tr></thead>
+        <tbody>${agendadas.map(c=>`<tr>
+          <td><strong>${escapeHtml(c.pacienteNome)}</strong></td>
+          <td>${c.dataHora}</td>
+          <td>${escapeHtml(c.motivo||'-')}</td>
+          <td><button class="btn btn-success btn-sm" onclick="abrirFormParaConsulta(${c.id})">📋 Registrar Atendimento</button></td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  } catch(e) {
+    document.getElementById('consultas-medico').innerHTML='<p style="color:red;padding:1rem">Erro ao carregar consultas</p>';
+  }
+}
+
+async function salvarFicha() {
+  if (!consultaAtualId) { showToast('Nenhuma consulta selecionada','warning'); return; }
+  const btn = event.target;
+  btn.disabled=true; btn.textContent='Salvando...';
+  document.getElementById('form-alert').innerHTML='';
+  const body={
+    consultaId: consultaAtualId,
+    diagnostico: document.getElementById('nf-diagnostico').value.trim(),
+    prescricao: document.getElementById('nf-prescricao').value.trim(),
+    examesSolicitados: document.getElementById('nf-exames').value.trim(),
+    observacoesMedico: document.getElementById('nf-obs').value.trim()
+  };
+  try {
+    await Api.post('/fichas', body);
+    showToast('Ficha registrada com sucesso!','success');
+    document.getElementById('form-nova-ficha').style.display='none';
+    await carregarMinhasConsultas();
+    window.history.replaceState({},document.title, window.location.pathname);
+  } catch(e) {
+    document.getElementById('form-alert').innerHTML=`<div class="alert alert-error">❌ ${escapeHtml(e.message)}</div>`;
+  } finally { btn.disabled=false; btn.textContent='💾 Registrar Atendimento'; }
+}
+
+function cancelarFicha() {
+  document.getElementById('form-nova-ficha').style.display='none';
+  window.history.replaceState({},document.title, window.location.pathname);
+}
+
+async function buscarHistorico() {
+  const pacienteId = document.getElementById('sel-paciente').value;
+  if (!pacienteId) { showToast('Selecione um paciente','warning'); return; }
+  const container = document.getElementById('historico-resultado');
+  container.innerHTML='<div class="loading"><div class="spinner"></div>Carregando...</div>';
+  try {
+    const fichas = await Api.get('/fichas/paciente/'+pacienteId);
+    if (!fichas.length) {
+      container.innerHTML='<div class="empty-state"><div class="empty-icon">📄</div>Nenhuma ficha encontrada para este paciente.</div>';
+      return;
+    }
+    container.innerHTML=fichas.map(f=>`
+      <div class="card" style="margin-bottom:.75rem;border-left:4px solid var(--primary)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+          <div>
+            <strong style="font-size:1rem">📅 ${f.dataConsulta}</strong>
+            <span style="color:var(--gray-600);font-size:.8rem;margin-left:.75rem">Dr(a). ${escapeHtml(f.medicoNome)}</span>
+          </div>
+          <span style="font-size:.75rem;color:var(--gray-500)">Reg: ${f.dataRegistro||''}</span>
+        </div>
+        <div class="detail-grid">
+          ${f.diagnostico?`<div class="detail-item full"><label>Diagnóstico</label><p>${escapeHtml(f.diagnostico)}</p></div>`:''}
+          ${f.prescricao?`<div class="detail-item full"><label>Prescrição</label><p style="white-space:pre-line">${escapeHtml(f.prescricao)}</p></div>`:''}
+          ${f.examesSolicitados?`<div class="detail-item"><label>Exames Solicitados</label><p>${escapeHtml(f.examesSolicitados)}</p></div>`:''}
+          ${f.observacoesMedico?`<div class="detail-item"><label>Observações</label><p>${escapeHtml(f.observacoesMedico)}</p></div>`:''}
+        </div>
+      </div>`).join('');
+  } catch(e) { container.innerHTML=`<p style="color:red;padding:1rem">Erro: ${e.message}</p>`; }
+}
+
+init();
+</script>
+</body>
+</html>

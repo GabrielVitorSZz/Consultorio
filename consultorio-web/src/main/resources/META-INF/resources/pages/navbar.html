@@ -1,0 +1,18 @@
+<!-- Navbar template - loaded via JS -->
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a href="/pages/dashboard.html" class="navbar-brand"><span>🏥</span> Consultório</a>
+    <ul class="navbar-menu">
+      <li><a href="/pages/dashboard.html" id="nav-dashboard">🏠 Início</a></li>
+      <li><a href="/pages/pacientes.html" id="nav-pacientes">👥 Pacientes</a></li>
+      <li><a href="/pages/consultas.html" id="nav-consultas">📅 Consultas</a></li>
+      <li class="medico-only"><a href="/pages/fichas.html" id="nav-fichas">📋 Fichas Médicas</a></li>
+      <li class="admin-only" style="display:none"><a href="/pages/usuarios.html" id="nav-usuarios">👤 Usuários</a></li>
+      <li class="admin-only" style="display:none"><a href="/pages/auditoria.html" id="nav-auditoria">🔍 Auditoria</a></li>
+    </ul>
+    <div class="navbar-user">
+      <div class="user-info" id="nav-user-info"></div>
+      <button class="btn-logout" onclick="Auth.logout()">Sair</button>
+    </div>
+  </div>
+</nav>

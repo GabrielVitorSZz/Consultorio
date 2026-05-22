@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Consultório</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-placeholder"></div>
+<div id="toast-container"></div>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1>🏠 Dashboard</h1>
+    <p>Visão geral do sistema</p>
+  </div>
+
+  <div class="dashboard-grid" id="stats-grid">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;flex-wrap:wrap">
+    <div class="card">
+      <div class="card-title">📅 Próximas Consultas</div>
+      <div id="proximas-consultas"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🕐 Últimas Ações</div>
+      <div id="ultimas-acoes"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+if (!Auth.requireAuth()) void 0;
+
+// Load navbar
+fetch('/pages/navbar.html').then(r => r.text()).then(html => {
+  document.getElementById('navbar-placeholder').innerHTML = html;
+  renderNavUser();
+  document.getElementById('nav-dashboard').classList.add('active');
+});
+
+async function loadDashboard() {
+  try {
+    const [consultas, pacientes, medicos] = await Promise.all([
+      Api.get('/consultas'),
+      Api.get('/pacientes'),
+      Api.get('/medicos')
+    ]);
+    const agendadas = consultas.filter(c => c.status === 'AGENDADA').length;
+    const realizadas = consultas.filter(c => c.status === 'REALIZADA').length;
+    const canceladas = consultas.filter(c => c.status === 'CANCELADA').length;
+
+    document.getElementById('stats-grid').innerHTML = `
+      <div class="stat-card"><div class="stat-num">${pacientes.length}</div><div class="stat-label">👥 Pacientes</div></div>
+      <div class="stat-card"><div class="stat-num">${medicos.length}</div><div class="stat-label">🩺 Médicos</div></div>
+      <div class="stat-card green"><div class="stat-num">${agendadas}</div><div class="stat-label">📅 Consultas Agendadas</div></div>
+      <div class="stat-card orange"><div class="stat-num">${realizadas}</div><div class="stat-label">✅ Consultas Realizadas</div></div>
+    `;
+
+    const proximas = consultas.filter(c => c.status === 'AGENDADA').slice(0, 5);
+    if (proximas.length === 0) {
+      document.getElementById('proximas-consultas').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Nenhuma consulta agendada</div>';
+    } else {
+      document.getElementById('proximas-consultas').innerHTML = `<table><thead><tr><th>Paciente</th><th>Médico</th><th>Data/Hora</th></tr></thead><tbody>
+        ${proximas.map(c => `<tr><td>${escapeHtml(c.pacienteNome)}</td><td>${escapeHtml(c.medicoNome)}</td><td>${c.dataHora}</td></tr>`).join('')}
+      </tbody></table>`;
+    }
+  } catch(e) {
+    showToast('Erro ao carregar dashboard: ' + e.message, 'error');
+  }
+
+  // Load audit log if admin
+  if (Auth.isAdmin()) {
+    try {
+      const logs = await Api.get('/auditoria?limite=5');
+      document.getElementById('ultimas-acoes').innerHTML = `<table><thead><tr><th>Ação</th><th>Usuário</th><th>Data/Hora</th></tr></thead><tbody>
+        ${logs.map(l => `<tr><td>${escapeHtml(l.acao)}</td><td>${escapeHtml(l.usuarioEmail)}</td><td>${l.dataHora}</td></tr>`).join('')}
+      </tbody></table>`;
+    } catch(e) {
+      document.getElementById('ultimas-acoes').innerHTML = '<p style="padding:1rem;color:#999">Acesso restrito</p>';
+    }
+  } else {
+    document.getElementById('ultimas-acoes').innerHTML = '<p style="padding:1rem;color:#999;font-size:.85rem">Log de auditoria disponível apenas para administradores.</p>';
+  }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
