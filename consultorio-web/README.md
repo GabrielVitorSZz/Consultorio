@@ -107,5 +107,60 @@ consultorio-web/
 
 ### Auditoria (Requisito 6)
 - Todas as ações são registradas via `AuditoriaBO.registrar()`
+- ## 📸 Capturas de Tela do Sistema
+
+### 🔐 Tela de Login
+![Login](src/main/resources/img/telaLogin.png)
+
+---
+
+### 👨‍💼 Dashboard do Administrador
+![Admin Dashboard](src/main/resources/img/TelaAdmin1.png)
+
+### 👥 Gerenciamento de Usuários (Admin)
+![Admin Usuários](src/main/resources/img/TelaAdmin2.png)
+
+### 📜 Log de Auditoria (Admin)
+![Admin Auditoria](src/main/resources/img/TelaAdmin3.png)
+
+---
+
+### 🩺 Dashboard do Médico
+![Médico Dashboard](src/main/resources/img/telaMedico1.png)
+
+### 📅 Consultas (Médico)
+![Médico Consultas](src/main/resources/img/telaMedico2.png)
+
+### 📝 Registrar Atendimento – Formulário
+![Registrar 1](src/main/resources/img/telaMedico3.png)
+
+### 📋 Registrar Atendimento – Preenchido
+![Registrar 2](src/main/resources/img/telaMedico4.png)
+
+### 📂 Fichas de Atendimento (Médico)
+![Fichas Médico](src/main/resources/img/telaMedico5.png)
+
+### 🔍 Consultas com Filtro (Médico)
+![Filtro Médico](src/main/resources/img/telaMedico6.png)
+
+---
+
+### 🧾 Dashboard da Recepcionista
+![Recep Dashboard](src/main/resources/img/TelaRecepcionista1.png)
+
+### 👤 Listagem de Pacientes (Recep)
+![Recep Pacientes](src/main/resources/img/TelaRecepcionista2.png)
+
+### 🔎 Detalhes do Paciente (Recep)
+![Recep Detalhes](src/main/resources/img/TelaRecepcionista3.png)
+
+### ⚙️ Consultas (Recep)
+![Recep Consultas](src/main/resources/img/TelaRecepcionista5.png)
+
+### 🔄 Atualizar Status (Recep)
+![Recep Status](src/main/resources/img/TelaRecepcionista6.png)
+
+### 📅 Reagendar Consulta (Recep)
+![Recep Reagendar](src/main/resources/img/TelaRecepcionista7.png)
 - Campos: ação, usuário executor (email + ID), data/hora
 - Visível apenas para ADMIN em /pages/auditoria.html
